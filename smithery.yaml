@@ -1,0 +1,95 @@
+version: '1.0'
+
+# 项目基本信息
+project:
+  name: mcp-rquest
+  description: MCP server for HTTP requests with browser fingerprinting
+  maintainer: team@example.com
+
+# Docker 镜像配置
+image:
+  name: mcp-rquest
+  registry: docker.io
+  tags:
+    - latest
+    - '1.0'
+  platforms:
+    - linux/amd64
+    - linux/arm64
+
+# 构建配置
+build:
+  dockerfile: Dockerfile
+  context: .
+  args:
+    PYTHON_VERSION: "3.11"
+  cache:
+    enabled: true
+    from: registry
+
+# 资源限制
+resources:
+  limits:
+    cpu: "1"
+    memory: "1Gi"
+  requests:
+    cpu: "0.5"
+    memory: "512Mi"
+
+# 健康检查配置
+healthcheck:
+  enabled: true
+  port: 8080
+  path: /health
+  initialDelaySeconds: 10
+  periodSeconds: 30
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+# 环境变量配置
+environment:
+  - name: PYTHONUNBUFFERED
+    value: "1"
+  - name: PYTHONDONTWRITEBYTECODE
+    value: "1"
+  - name: LOG_LEVEL
+    value: "INFO"
+
+# 部署配置
+deploy:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  ports:
+    - containerPort: 8080
+      protocol: TCP
+  volumes:
+    - name: temp-storage
+      emptyDir: {}
+  
+# CI/CD 配置
+ci:
+  triggers:
+    - type: push
+      branches:
+        - main
+        - develop
+    - type: tag
+      pattern: "v*"
+  stages:
+    - name: test
+      commands:
+        - uv pip install -e ".[dev]"
+        - python -m pytest
+    - name: build
+      commands:
+        - smithery build
+    - name: push
+      commands:
+        - smithery push
+      when:
+        - branch: main
+        - tag: "v*"
