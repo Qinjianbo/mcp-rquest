@@ -1,3 +1,23 @@
+version: '1.0'
+
+# 项目基本信息
+project:
+  name: mcp-rquest
+  description: MCP server for HTTP requests with browser fingerprinting
+  maintainer: team@example.com
+
+# Docker 镜像配置
+image:
+  name: mcp-rquest
+  registry: docker.io
+  tags:
+    - latest
+    - '1.0'
+  platforms:
+    - linux/amd64
+    - linux/arm64
+
+# 构建配置
 build:
   dockerfile: Dockerfile
   dockerBuildPath: .
@@ -5,22 +25,18 @@ build:
 startCommand:
   type: stdio
   configSchema:
-    type: object
-    properties:
-      logLevel:
-        type: string
-        description: "日志级别设置 (DEBUG, INFO, WARNING, ERROR)"
-        enum: ["DEBUG", "INFO", "WARNING", "ERROR"]
-        default: "INFO"
-      tempStoragePath:
-        type: string
-        description: "临时文件存储路径"
-        default: "/tmp/mcp-rquest"
-      maxResponseSize:
-        type: integer
-        description: "最大响应大小（字节）"
-        default: 10485760  # 10MB
-    additionalProperties: false
+    logLevel:
+      type: "string"
+      description: "日志级别设置 (DEBUG, INFO, WARNING, ERROR)"
+      default: "INFO"
+    tempStoragePath:
+      type: "string"
+      description: "临时文件存储路径"
+      default: "/tmp/mcp-rquest"
+    maxResponseSize:
+      type: "number"
+      description: "最大响应大小（字节）"
+      default: 10485760
 
   commandFunction: |
     (config) => ({
@@ -67,3 +83,33 @@ deploy:
     type: RollingUpdate
     maxSurge: 1
     maxUnavailable: 0
+  ports:
+    - containerPort: 8080
+      protocol: TCP
+  volumes:
+    - name: temp-storage
+      emptyDir: {}
+  
+# CI/CD 配置
+ci:
+  triggers:
+    - type: push
+      branches:
+        - main
+        - develop
+    - type: tag
+      pattern: "v*"
+  stages:
+    - name: test
+      commands:
+        - uv pip install -e ".[dev]"
+        - python -m pytest
+    - name: build
+      commands:
+        - smithery build
+    - name: push
+      commands:
+        - smithery push
+      when:
+        - branch: main
+        - tag: "v*" 
