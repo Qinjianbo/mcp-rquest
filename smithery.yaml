@@ -1,95 +1,69 @@
-version: '1.0'
-
-# 项目基本信息
-project:
-  name: mcp-rquest
-  description: MCP server for HTTP requests with browser fingerprinting
-  maintainer: team@example.com
-
-# Docker 镜像配置
-image:
-  name: mcp-rquest
-  registry: docker.io
-  tags:
-    - latest
-    - '1.0'
-  platforms:
-    - linux/amd64
-    - linux/arm64
-
-# 构建配置
 build:
   dockerfile: Dockerfile
-  context: .
-  args:
-    PYTHON_VERSION: "3.11"
-  cache:
-    enabled: true
-    from: registry
+  dockerBuildPath: .
 
-# 资源限制
+startCommand:
+  type: stdio
+  configSchema:
+    type: object
+    properties:
+      logLevel:
+        type: string
+        description: "日志级别设置 (DEBUG, INFO, WARNING, ERROR)"
+        enum: ["DEBUG", "INFO", "WARNING", "ERROR"]
+        default: "INFO"
+      tempStoragePath:
+        type: string
+        description: "临时文件存储路径"
+        default: "/tmp/mcp-rquest"
+      maxResponseSize:
+        type: integer
+        description: "最大响应大小（字节）"
+        default: 10485760  # 10MB
+    additionalProperties: false
+
+  commandFunction: |
+    (config) => ({
+      command: 'python',
+      args: ['-m', 'mcp_rquest'],
+      env: {
+        PYTHONUNBUFFERED: '1',
+        PYTHONDONTWRITEBYTECODE: '1',
+        LOG_LEVEL: config.logLevel || 'INFO',
+        TEMP_STORAGE_PATH: config.tempStoragePath || '/tmp/mcp-rquest',
+        MAX_RESPONSE_SIZE: String(config.maxResponseSize || 10485760)
+      }
+    })
+
+# 测试配置
+test:
+  commands:
+    - uv pip install -e ".[dev]"
+    - python -m pytest
+
+# 资源配置
 resources:
   limits:
-    cpu: "1"
     memory: "1Gi"
+    cpu: "1"
   requests:
-    cpu: "0.5"
     memory: "512Mi"
+    cpu: "0.5"
 
-# 健康检查配置
-healthcheck:
+# 健康检查
+health:
   enabled: true
-  port: 8080
   path: /health
+  port: 8080
   initialDelaySeconds: 10
   periodSeconds: 30
   timeoutSeconds: 5
   failureThreshold: 3
-
-# 环境变量配置
-environment:
-  - name: PYTHONUNBUFFERED
-    value: "1"
-  - name: PYTHONDONTWRITEBYTECODE
-    value: "1"
-  - name: LOG_LEVEL
-    value: "INFO"
 
 # 部署配置
 deploy:
   replicas: 2
   strategy:
     type: RollingUpdate
-    rollingUpdate:
-      maxSurge: 1
-      maxUnavailable: 0
-  ports:
-    - containerPort: 8080
-      protocol: TCP
-  volumes:
-    - name: temp-storage
-      emptyDir: {}
-  
-# CI/CD 配置
-ci:
-  triggers:
-    - type: push
-      branches:
-        - main
-        - develop
-    - type: tag
-      pattern: "v*"
-  stages:
-    - name: test
-      commands:
-        - uv pip install -e ".[dev]"
-        - python -m pytest
-    - name: build
-      commands:
-        - smithery build
-    - name: push
-      commands:
-        - smithery push
-      when:
-        - branch: main
-        - tag: "v*"
+    maxSurge: 1
+    maxUnavailable: 0
