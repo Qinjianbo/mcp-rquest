@@ -1,49 +1,57 @@
-# 构建阶段：使用 Alpine 基础镜像
-FROM python:3.11-alpine AS builder
+# 使用 uv 基础镜像
+FROM ghcr.io/astral-sh/uv:python3.11-bookworm-slim AS uv
 
 # 设置工作目录
 WORKDIR /app
 
-# 安装构建依赖
-RUN apk add --no-cache \
-    build-base \
-    curl \
-    git
+# 启用字节码编译
+ENV UV_COMPILE_BYTECODE=1
 
-# 复制所有文件
+# 使用复制模式而不是链接
+ENV UV_LINK_MODE=copy
+
+# 复制项目文件
 COPY . .
 
-# 安装依赖
-RUN pip install --no-cache-dir .
+# 安装项目依赖和项目本身
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install --system .
 
-# 运行阶段：使用更小的基础镜像
-FROM python:3.11-alpine
-
-# 设置工作目录
-WORKDIR /app
+# 运行阶段
+FROM python:3.11-slim-bookworm
 
 # 安装运行时依赖
-RUN apk add --no-cache \
+RUN apt-get update && apt-get install -y \
     ca-certificates \
     tzdata \
     && cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
-    && echo "Asia/Shanghai" > /etc/timezone
+    && echo "Asia/Shanghai" > /etc/timezone \
+    && rm -rf /var/lib/apt/lists/*
 
-# 复制安装的包和必要文件
-COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
-COPY --from=builder /app/mcp_rquest /app/mcp_rquest
+# 设置工作目录
+WORKDIR /app
+
+# 创建非 root 用户
+RUN groupadd -r mcp && useradd -r -g mcp mcp
+
+# 复制安装的包
+COPY --from=uv /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+COPY --from=uv /app/mcp_rquest /app/mcp_rquest
+
+# 设置权限
+RUN chown -R mcp:mcp /app/mcp_rquest
 
 # 设置环境变量
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONPATH=/app
 ENV TZ=Asia/Shanghai
+ENV HOME=/home/mcp
 
-# 创建非 root 用户
-RUN addgroup -S mcp && adduser -S -G mcp mcp
+# 切换到非 root 用户
 USER mcp
 
-# 暴露默认端口（MCP 服务器默认端口）
+# 暴露默认端口
 EXPOSE 8080
 
 # 健康检查
